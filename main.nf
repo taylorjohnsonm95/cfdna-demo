@@ -13,7 +13,7 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-include { CFDNA-DEMO  } from './workflows/cfdna-demo'
+include { CFDNA_ANALYSIS  } from './workflows/cfdna_analysis'
 include { PIPELINE_INITIALISATION } from './subworkflows/local/utils_nfcore_cfdna-demo_pipeline'
 include { PIPELINE_COMPLETION     } from './subworkflows/local/utils_nfcore_cfdna-demo_pipeline'
 include { getGenomeAttribute      } from './subworkflows/local/utils_nfcore_cfdna-demo_pipeline'
@@ -24,10 +24,8 @@ include { getGenomeAttribute      } from './subworkflows/local/utils_nfcore_cfdn
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-// TODO nf-core: Remove this line if you don't need a FASTA file
-//   This is an example of how to use getGenomeAttribute() to fetch parameters
-//   from igenomes.config using `--genome`
-params.fasta = getGenomeAttribute('fasta')
+params.fasta     = getGenomeAttribute('fasta')
+params.bwamem2   = getGenomeAttribute('bwamem2')
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -38,25 +36,42 @@ params.fasta = getGenomeAttribute('fasta')
 //
 // WORKFLOW: Run main analysis pipeline depending on type of input
 //
-workflow TAYLORJOHNSONM95_CFDNA-DEMO {
+workflow CFDNA_DEMO {
 
     take:
     samplesheet // channel: samplesheet read in from --input
 
     main:
 
+    // Wrap iGenomes references into channels with meta maps
+    ch_fasta       = Channel.value([ [id: params.genome], file(params.fasta) ])
+    ch_bwamem2     = Channel.value([ [id: params.genome], file(params.bwamem2) ])
+
+    // mosdepth
+    ch_mosdepth_bed = params.mosdepth_bed ? Channel.fromPath(params.mosdepth_bed, checkIfExists: true)
+        .map { bed -> [[id: bed.baseName], bed] }
+        : Channel.value([[id:'null'], []])
+
+    // VEP
+    ch_cache  = params.vep_cache ? Channel.fromPath(params.vep_cache, checkIfExists: true)
+        : Channel.value([])
+
     //
     // WORKFLOW: Run pipeline
     //
-    CFDNA-DEMO (
+    CFDNA_ANALYSIS (
         samplesheet,
         params.multiqc_config,
         params.multiqc_logo,
         params.multiqc_methods_description,
         params.outdir,
+        ch_fasta,
+        ch_bwamem2,
+        ch_mosdepth_bed,
+        ch_cache
     )
     emit:
-    multiqc_report = CFDNA-DEMO.out.multiqc_report // channel: /path/to/multiqc_report.html
+    multiqc_report = CFDNA_ANALYSIS.out.multiqc_report // channel: /path/to/multiqc_report.html
 }
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -85,7 +100,7 @@ workflow {
     //
     // WORKFLOW: Run main workflow
     //
-    TAYLORJOHNSONM95_CFDNA-DEMO (
+    CFDNA_DEMO (
         PIPELINE_INITIALISATION.out.samplesheet
     )
     //
@@ -97,7 +112,7 @@ workflow {
         params.plaintext_email,
         params.outdir,
         params.monochrome_logs,
-        TAYLORJOHNSONM95_CFDNA-DEMO.out.multiqc_report
+        CFDNA_DEMO.out.multiqc_report
     )
 }
 

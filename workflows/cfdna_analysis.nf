@@ -4,6 +4,22 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 include { FASTQC                 } from '../modules/nf-core/fastqc/main'
+include { FGUMI_EXTRACT          } from '../modules/nf-core/fgumi/extract/main'
+include { BWAMEM2_MEM            } from '../modules/nf-core/bwamem2/mem/main'
+include { FGUMI_ZIPPER           } from '../modules/nf-core/fgumi/zipper/main'  
+include { FGUMI_SORT             } from '../modules/nf-core/fgumi/sort/main'
+include { FGUMI_GROUP            } from '../modules/nf-core/fgumi/group/main'
+include { FGUMI_SIMPLEX          } from '../modules/nf-core/fgumi/simplex/main'
+include { BWAMEM2_MEM as BWAMEM2_MEM_CONSENSUS } from '../modules/nf-core/bwamem2/mem/main'
+include { PICARD_COLLECTHSMETRICS              } from '../modules/nf-core/picard/collecthsmetrics/main'    
+include { PICARD_COLLECTINSERTSIZEMETRICS      } from '../modules/nf-core/picard/collectinsertsizemetrics/main' 
+include { MOSDEPTH                             } from '../modules/nf-core/mosdepth/main'
+include { GATK4_MUTECT2                        } from '../modules/nf-core/gatk4/mutect2/main'   
+include { GATK4_LEARNREADORIENTATIONMODEL      } from '../modules/nf-core/gatk4/learnreadorientationmodel/main'  
+include { GATK4_GETPILEUPSUMMARIES             } from '../modules/nf-core/gatk4/getpileupsummaries/main'      
+include { GATK4_CALCULATECONTAMINATION         } from '../modules/nf-core/gatk4/calculatecontamination/main'       
+include { GATK4_FILTERMUTECTCALLS              } from '../modules/nf-core/gatk4/filtermutectcalls/main'  
+include { ENSEMBLVEP_VEP                       } from '../modules/nf-core/ensemblvep/vep/main'
 include { MULTIQC                } from '../modules/nf-core/multiqc/main'
 include { paramsSummaryMap       } from 'plugin/nf-schema'
 include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
@@ -16,7 +32,7 @@ include { methodsDescriptionText } from '../subworkflows/local/utils_nfcore_cfdn
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-workflow CFDNA-DEMO {
+workflow CFDNA_ANALYSIS {
 
     take:
     ch_samplesheet // channel: samplesheet read in from --input
@@ -24,6 +40,10 @@ workflow CFDNA-DEMO {
     multiqc_logo
     multiqc_methods_description
     outdir
+    ch_fasta
+    ch_bwamem2
+    ch_mosdepth_bed
+    ch_cache
 
     main:
 
@@ -34,6 +54,89 @@ workflow CFDNA-DEMO {
     //
     FASTQC(ch_samplesheet)
     ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.map{ _meta, file -> file })
+
+    //
+    // MODULE: UMI EXTRACT
+    //
+    FGUMI_EXTRACT(
+        ch_samplesheet.map { meta, reads -> [ meta, reads, meta.library ] }
+    )
+
+    //
+    // MODULE: ALIGN
+    //
+    BWAMEM2_MEM(
+        FGUMI_EXTRACT.out.bam,
+        ch_bwamem2,
+        ch_fasta,
+        false
+    )
+
+    // //
+    // // MODULE: GROUPING AND CONSENSUS
+    // //
+    // FGUMI_ZIPPER(BWAMEM2_MEM.out.bam)
+    // FGUMI_SORT(FGUMI_ZIPPER.out.bam)
+    // FGUMI_GROUP(FGUMI_SORT.out.bam)
+    // FGUMI_SIMPLEX(FGUMI_GROUP.out.bam)
+
+
+    // //
+    // // MODULE: REALIGN CONSENSUS
+    // //
+    // BWAMEM2_MEM_CONSENSUS(FGUMI_SIMPLEX.out.bam)
+
+    // //
+    // // MODULE: QC METRICS
+    // //
+    // PICARD_COLLECTHSMETRICS(BWAMEM2_MEM_CONSENSUS.out.bam)
+    // PICARD_COLLECTINSERTSIZEMETRICS(BWAMEM2_MEM_CONSENSUS.out.bam)
+    // ch_bam_bai_bed = ch_bam_bai.combine(ch_mosdepth_bed.map { meta, bed -> [bed ?: []] })
+    // MOSDEPTH (
+    //     ch_bam_bai_bed,
+    //     ch_fasta
+    // )
+    // ch_multiqc_files = ch_multiqc_files.mix(MOSDEPTH.out.summary_txt.collect{ it[1] })
+    // ch_versions = ch_versions.mix(MOSDEPTH.out.versions.first())
+
+    
+    // //
+    // // MODULE: VARIANT CALLING
+    // //
+    // GATK4_MUTECT2(BWAMEM2_MEM_CONSENSUS.out.bam)
+    
+    // //
+    // // MODULE: BACKGROUND ERROR MODEL
+    // //
+    // GATK4_LEARNREADORIENTATIONMODEL(BWAMEM2_MEM_CONSENSUS.out.bam)
+    // GATK4_GETPILEUPSUMMARIES(BWAMEM2_MEM_CONSENSUS.out.bam)
+    // GATK4_CALCULATECONTAMINATION(BWAMEM2_MEM_CONSENSUS.out.bam)
+
+    // //
+    // // MODULE: VARIANT FILTER
+    // //
+    // GATK4_FILTERMUTECTCALLS(BWAMEM2_MEM_CONSENSUS.out.bam)
+
+    // //
+    // // MODULE: ANNOTATE VARIANTS
+    // //
+    // ENSEMBLVEP_VEP(
+    //     ch_vcfs.map { meta, vcf -> [ meta, vcf, [] ] },
+    //     params.genome,
+    //     params.species,
+    //     params.cache_version,
+    //     ch_cache,
+    //     ch_fasta,
+    //     []                // extra_files (plugins/custom VCFs)
+    // )
+    // ch_versions = ch_versions.mix(ENSEMBLVEP_VEP.out.versions.first())
+
+    
+    //
+    // MODULE: VALIDATION REPORT
+    //
+
+
 
     //
     // Collate and save software versions
